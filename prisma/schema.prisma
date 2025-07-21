@@ -1,0 +1,22 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // ✅ you can change to "postgresql" later if needed
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   @default("admin") // can be 'admin' or 'super_admin'
+  createdAt DateTime @default(now())
+}
+
+
+
+
