@@ -1,13 +1,15 @@
 // app/admin/dashboard/exam-management/create/page.tsx
 
+'use client';
+
 import React from 'react';
+import CreateTestBuilder from '../components/CreateTestBuilder';
 
 export default function CreateTestPage() {
   return (
-    <div className="p-6">
+    <div className="max-w-4xl mx-auto py-8 px-2">
       <h1 className="text-2xl font-bold mb-4">🧪 Create a Test</h1>
-      <p>This is where your test creation form will go.</p>
-      <p className="text-sm text-gray-500 mt-2">This page will be optimized in the next phase.</p>
+      <CreateTestBuilder />
     </div>
   );
 }

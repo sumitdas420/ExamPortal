@@ -1,22 +1,386 @@
-// prisma/schema.prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite" // ✅ you can change to "postgresql" later if needed
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
+// Existing User models (keeping your current structure)
 model Admin {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
+  username  String   @unique
   email     String   @unique
   password  String
-  role      String   @default("admin") // can be 'admin' or 'super_admin'
+  role      AdminRole @default(ADMIN)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  createdQuestions Question[]
+  createdExams     Exam[]
 }
 
+model Student {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  phone     String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  // Relationships
+  examAttempts ExamAttempt[]
+  studentAnswers StudentAnswer[]
+}
 
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
 
+// Enhanced Question System
+model Question {
+  id            String      @id @default(cuid())
+  content       String      // Removed @db.Text
+  questionImage String?     // File path or URL
+  questionType  QuestionType @default(MCQ_SINGLE)
+  
+  // Flexible options system (JSON array)
+  options       Json?       // Made optional
+  optionImages  Json?       // ["image1.jpg", null, "image3.jpg", null, null]
+  correctAnswer Json?       // Single: "A" or Multiple: ["A", "C", "D"]
+  
+  explanation   String?     // Removed @db.Text
+  explanationImage String?
+  
+  // Classification
+  subject       Subject
+  category      String
+  subcategory   String?
+  difficulty    Difficulty  @default(MEDIUM)
+  estimatedTime Int?        // Seconds to solve
+  
+  // Metadata
+  isActive      Boolean     @default(true)
+  createdById   String
+  
+  // Analytics
+  timesUsed     Int         @default(0)
+  correctRate   Float?      // Success rate (0-1)
+  avgTimeSpent  Float?      // Average time in seconds
+  
+  // Relationships
+  createdBy        Admin @relation(fields: [createdById], references: [id], onDelete: Cascade) // Added onDelete: Cascade
+  tags             QuestionTag[]
+  questionBanks    QuestionBankQuestion[]
+  examQuestions    ExamQuestion[]
+  studentAnswers   StudentAnswer[]
+  sectionQuestions SectionQuestion[]  // Added missing relation
+  uploadedFiles    UploadedFile[]     // New relation for images linked to this question
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([subject, category])
+  @@index([difficulty])
+  @@index([isActive])
+}
+
+enum QuestionType {
+  MCQ_SINGLE    // Single correct answer (A, B, C, D, E, F...)
+  MCQ_MULTIPLE  // Multiple correct answers
+  TRUE_FALSE    // True/False only
+  NUMERICAL     // Number input
+  DESCRIPTIVE   // Text area answer
+  FILL_BLANKS   // Fill in the blanks
+  MATCH_FOLLOWING // Column matching
+}
+
+enum Subject {
+  CAT
+  JEE_MAIN
+  JEE_ADVANCED
+  NEET
+  UPSC
+  GATE
+  SSC
+  BANK_PO
+  SNAP
+  XAT
+  GMAT
+  GRE
+  IELTS
+  TOEFL
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+// Question Banking System
+model QuestionBank {
+  id          String @id @default(cuid())
+  name        String // "CAT Quantitative Ability Bank"
+  subject     Subject
+  category    String // "Quantitative Ability", "Physics", etc.
+  subcategory String? // "Algebra", "Geometry", etc.
+  description String? // Removed @db.Text
+  color       String? // UI color theme
+  
+  questions   QuestionBankQuestion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([subject, category, subcategory])
+}
+
+model QuestionBankQuestion {
+  questionId     String
+  questionBankId String
+  
+  question       Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionBank   QuestionBank @relation(fields: [questionBankId], references: [id], onDelete: Cascade)
+  
+  addedAt        DateTime     @default(now())
+  
+  @@id([questionId, questionBankId])
+}
+
+// Tag System
+model Tag {
+  id          String @id @default(cuid())
+  name        String @unique
+  color       String? // Hex color for UI (#FF5733)
+  description String?
+  
+  questions   QuestionTag[]
+  
+  createdAt   DateTime @default(now())
+}
+
+model QuestionTag {
+  questionId String
+  tagId      String
+  
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@id([questionId, tagId])
+}
+
+// Exam System
+model ExamTemplate {
+  id            String @id @default(cuid())
+  name          String // "CAT Standard Pattern"
+  subject       Subject
+  description   String? // Removed @db.Text
+  
+  // Global Settings
+  totalTime     Int     // Total minutes
+  allowBackward Boolean @default(true)
+  showTimer     Boolean @default(true)
+  shuffleQuestions Boolean @default(false)
+  shuffleOptions   Boolean @default(false)
+  
+  // Instructions
+  instructions  String? // Removed @db.Text
+  
+  sections      Section[]
+  exams         Exam[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Section {
+  id              String @id @default(cuid())
+  name            String // "Quantitative Ability"
+  description     String? // Removed @db.Text
+  order           Int     // Section order (1, 2, 3...)
+  
+  // Timing Configuration
+  timeLimit       Int?    // Minutes for this section
+  lockAfterTime   Int?    // Lock section after X minutes
+  mandatory       Boolean @default(true)
+  
+  // Question Distribution
+  totalQuestions  Int
+  easyCount       Int     @default(0)
+  mediumCount     Int     @default(0)
+  hardCount       Int     @default(0)
+  expertCount     Int     @default(0)
+  
+  // Instructions for this section
+  instructions    String? // Removed @db.Text
+  
+  // Relationships
+  examTemplate    ExamTemplate @relation(fields: [examTemplateId], references: [id], onDelete: Cascade)
+  examTemplateId  String
+  
+  sectionQuestions SectionQuestion[]
+  
+  @@unique([examTemplateId, order])
+}
+
+// Actual Exams (Instances)
+model Exam {
+  id              String @id @default(cuid())
+  title           String // "CAT Mock Test 3"
+  description     String? // Removed @db.Text
+  
+  // Exam Configuration
+  templateId      String?
+  subject         Subject
+  startDate       DateTime?
+  endDate         DateTime?
+  duration        Int     // Minutes
+  maxAttempts     Int     @default(1)
+  
+  // Status
+  isPublished     Boolean @default(false)
+  isActive        Boolean @default(true)
+  
+  // Settings
+  showResults     Boolean @default(true)
+  allowReview     Boolean @default(true)
+  passingMarks    Float?
+  
+  // Relationships
+  template        ExamTemplate? @relation(fields: [templateId], references: [id])
+  createdBy       Admin         @relation(fields: [createdById], references: [id], onDelete: Cascade) // Added onDelete: Cascade
+  createdById     String
+  
+  examQuestions   ExamQuestion[]
+  examAttempts    ExamAttempt[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([subject])
+  @@index([isPublished, isActive])
+}
+
+model ExamQuestion {
+  id          String @id @default(cuid())
+  examId      String
+  questionId  String
+  sectionName String?
+  order       Int     // Question order within exam
+  marks       Float   @default(1.0)
+  negativeMarks Float @default(0.0)
+  
+  exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question    Question @relation(fields: [questionId], references: [id])
+  
+  @@unique([examId, order])
+  @@index([examId, sectionName])
+}
+
+model SectionQuestion {
+  id          String @id @default(cuid())
+  sectionId   String
+  questionId  String
+  order       Int
+  marks       Float @default(1.0)
+  negativeMarks Float @default(0.0)
+  
+  section     Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  question    Question @relation(fields: [questionId], references: [id])
+  
+  @@unique([sectionId, order])
+}
+
+// Student Exam Attempts
+model ExamAttempt {
+  id          String @id @default(cuid())
+  studentId   String
+  examId      String
+  
+  startTime   DateTime
+  endTime     DateTime?
+  timeSpent   Int?        // Total seconds spent
+  
+  // Scoring
+  totalMarks      Float?
+  obtainedMarks   Float?
+  percentage      Float?
+  rank            Int?
+  
+  // Status
+  status      ExamStatus @default(IN_PROGRESS)
+  isCompleted Boolean    @default(false)
+  
+  // Relationships
+  student     Student @relation(fields: [studentId], references: [id])
+  exam        Exam    @relation(fields: [examId], references: [id])
+  answers     StudentAnswer[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([studentId, examId]) // One attempt per student per exam (adjust based on maxAttempts)
+}
+
+enum ExamStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SUBMITTED
+  EXPIRED
+  CANCELLED
+}
+
+// Student Answers
+model StudentAnswer {
+  id            String @id @default(cuid())
+  studentId     String
+  questionId    String
+  examAttemptId String
+  
+  selectedAnswer Json?    // Student's selected answer(s)
+  isCorrect     Boolean?
+  marksObtained Float?
+  timeSpent     Int?     // Seconds spent on this question
+  
+  // Relationships
+  student       Student     @relation(fields: [studentId], references: [id])
+  question      Question    @relation(fields: [questionId], references: [id])
+  examAttempt   ExamAttempt @relation(fields: [examAttemptId], references: [id], onDelete: Cascade)
+  
+  answeredAt    DateTime @default(now())
+
+  @@unique([examAttemptId, questionId])
+}
+
+// File Upload Management
+model UploadedFile {
+  id          String @id @default(cuid())
+  originalName String
+  fileName    String @unique
+  filePath    String
+  fileSize    Int
+  mimeType    String
+  uploadedBy  String // Admin ID
+  questionId  String? // New: Optional link to a specific question for tighter association
+  
+  createdAt   DateTime @default(now())
+
+  question    Question? @relation(fields: [questionId], references: [id], onDelete: Cascade) // New relation with cascade delete
+
+  @@index([uploadedBy])
+  @@index([questionId]) // New index for faster queries by question
+}

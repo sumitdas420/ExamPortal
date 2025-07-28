@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/Topbar';
 import { Button } from '@/components/ui/button';
@@ -11,21 +12,19 @@ import { cn } from '@/lib/utils';
 export default function AdminDashboardPage() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
+  const router = useRouter();
 
   const toggleSidebar = () => setSidebarOpen(prev => !prev);
 
   useEffect(() => {
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-    };
-
+    const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
-    handleResize(); // set initial width
+    handleResize(); // Set initial width
 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Open sidebar only on desktop by default, closed otherwise
+  // Open sidebar on desktop by default, closed on mobile
   useEffect(() => {
     if (windowWidth >= 768) {
       setSidebarOpen(true);
@@ -62,25 +61,26 @@ export default function AdminDashboardPage() {
         <Topbar />
 
         <main className="flex-1 overflow-y-auto p-6">
-          {/* Don't force grid here — let content handle itself */}
-
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8">
             <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">
               Dashboard Overview
             </h1>
 
             <div className="mt-4 sm:mt-0">
-              <Button variant="primary" className="px-6 py-3 text-lg font-semibold">
+              <Button
+                onClick={() => router.push('/admin/dashboard/exam-management/create')}
+                variant="primary"
+                className="px-6 py-3 text-lg font-semibold"
+              >
                 Create Test
               </Button>
             </div>
           </div>
 
           <div className="space-y-6">
-            {/* Your content components rendered normally, no forced grid */}
             <AnalyticsPanel />
             <AdminTools />
-            {/* Additional dashboard content sections */}
+            {/* Add more dashboard content sections as needed */}
           </div>
         </main>
       </div>
