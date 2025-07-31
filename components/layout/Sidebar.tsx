@@ -1,11 +1,11 @@
 'use client';
-
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, BarChart3, BookOpenCheck, Users, ShieldCheck,
-  BadgePercent, Settings, LogOut, ChevronLeft, ChevronRight, Plus, Sun, Moon, Menu
+  BadgePercent, Settings, LogOut, ChevronLeft, ChevronRight, Plus, Sun, Moon, Menu, Bell, FileUp,
+  ListChecks
 } from 'lucide-react';
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
@@ -21,9 +21,11 @@ const navItems = [
   { title: 'Analytics', icon: BarChart3, href: '/admin/dashboard/analytics' },
   { title: 'Exam Management', icon: BookOpenCheck, href: '/admin/dashboard/exam-management' },
   { title: 'Students', icon: Users, href: '/admin/dashboard/students' },
+  { title: 'Bulk Import', icon: FileUp, href: '/admin/dashboard/bulk-import' },
+  { title: 'Audit Log', icon: ListChecks, href: '/admin/dashboard/audit' },
   { title: 'Admin Controls', icon: ShieldCheck, href: '/admin/dashboard/admin-controls' },
   { title: 'Enrollments', icon: BadgePercent, href: '/admin/dashboard/enrollments' },
-  { title: 'Settings', icon: Settings, href: '/admin/dashboard/settings' },
+  { title: 'Settings', icon: Settings, href: '/admin/dashboard/settings' }
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar, isMobile }: SidebarProps) {
@@ -83,7 +85,6 @@ export default function Sidebar({ isOpen, toggleSidebar, isMobile }: SidebarProp
             <ChevronIcon className="h-5 w-5 text-foreground" />
           </button>
         </div>
-
         {/* Create Test CTA */}
         <div className={cn('mt-3 px-4', !isOpen && 'flex justify-center')}>
           <button
@@ -100,7 +101,6 @@ export default function Sidebar({ isOpen, toggleSidebar, isMobile }: SidebarProp
             {isOpen && <span className="ml-2">Create Test</span>}
           </button>
         </div>
-
         {/* Navigation */}
         <nav className="flex flex-col flex-grow overflow-y-auto mt-2 space-y-1 py-2">
           {navItems.slice(0, settingsIdx + 1).map(({ title, icon: Icon, href }) => {
@@ -124,7 +124,6 @@ export default function Sidebar({ isOpen, toggleSidebar, isMobile }: SidebarProp
               </Link>
             );
           })}
-
           {/* Theme toggle nav item below "Settings" */}
           <button
             onClick={() => mounted && setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
@@ -149,7 +148,6 @@ export default function Sidebar({ isOpen, toggleSidebar, isMobile }: SidebarProp
             )}
           </button>
         </nav>
-
         {/* Logout at bottom */}
         <div className="px-4 py-4 border-t border-gray-200 dark:border-gray-700">
           <button
