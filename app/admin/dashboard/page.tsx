@@ -1,88 +1,87 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Sidebar from '@/components/layout/Sidebar';
-import Topbar from '@/components/Topbar';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ArrowRight } from 'lucide-react';
 import AnalyticsPanel from '@/components/AnalyticsPanel';
 import AdminTools from '@/components/AdminTools';
-import { cn } from '@/lib/utils';
 
 export default function AdminDashboardPage() {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(0);
-  const router = useRouter();
-
-  const toggleSidebar = () => setSidebarOpen(prev => !prev);
-
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    handleResize(); // Set initial width
-
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Open sidebar on desktop by default, closed on mobile
-  useEffect(() => {
-    if (windowWidth >= 768) {
-      setSidebarOpen(true);
-    } else {
-      setSidebarOpen(false);
-    }
-  }, [windowWidth]);
-
-  const isMobile = windowWidth < 768;
-
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden relative">
-      <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} isMobile={isMobile} />
+    <div className="relative mt-12 md:mt-0 flex flex-col gap-5 max-w-6xl mx-auto px-2 sm:px-6">
+      {/* Heading */}
+      <div>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">
+          Welcome back, Admin 👋
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Here’s a quick overview of your platform.
+        </p>
+      </div>
 
-      {/* Backdrop for sidebar overlay on mobile */}
-      {isMobile && isSidebarOpen && (
-        <div
-          onClick={toggleSidebar}
-          className="fixed inset-0 bg-black bg-opacity-40 z-30"
-          aria-hidden="true"
-        />
-      )}
+      {/* Compact Quick Stats Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Card className="bg-card shadow-sm">
+          <CardContent className="p-3 min-h-[70px]">
+            <p className="text-xs text-muted-foreground">Total Exams</p>
+            <h2 className="text-lg font-bold text-foreground">12</h2>
+          </CardContent>
+        </Card>
+        <Card className="bg-card shadow-sm">
+          <CardContent className="p-3 min-h-[70px]">
+            <p className="text-xs text-muted-foreground">Total Students</p>
+            <h2 className="text-lg font-bold text-foreground">1,430</h2>
+          </CardContent>
+        </Card>
+        <Card className="bg-card shadow-sm">
+          <CardContent className="p-3 min-h-[70px]">
+            <p className="text-xs text-muted-foreground">Recent Enrollments</p>
+            <h2 className="text-lg font-bold text-foreground">57</h2>
+          </CardContent>
+        </Card>
+        <Card className="bg-card shadow-sm">
+          <CardContent className="p-3 min-h-[70px]">
+            <p className="text-xs text-muted-foreground">Active Admins</p>
+            <h2 className="text-lg font-bold text-foreground">3</h2>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Main content area */}
-      <div
-        className={cn(
-          'flex flex-col flex-1 transition-all duration-300',
-          // Add margin on desktop only based on sidebar open state
-          isSidebarOpen && !isMobile ? 'md:ml-64' : 'md:ml-16',
-          // No margin on mobile, to use full width
-          'ml-0'
-        )}
-      >
-        <Topbar />
+      {/* Compact Quick Actions */}
+      <div className="bg-card rounded-xl shadow-sm p-4">
+        <h3 className="text-base font-semibold mb-2 text-foreground">Quick Actions</h3>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => window.location.href = '/admin/dashboard/exam-management/create'}
+          >
+            Create Test
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.location.href = '/admin/dashboard/analytics'}
+          >
+            View Analytics
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.location.href = '/admin/dashboard/students'}
+          >
+            Manage Students
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8">
-            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">
-              Dashboard Overview
-            </h1>
-
-            <div className="mt-4 sm:mt-0">
-              <Button
-                onClick={() => router.push('/admin/dashboard/exam-management/create')}
-                variant="primary"
-                className="px-6 py-3 text-lg font-semibold"
-              >
-                Create Test
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <AnalyticsPanel />
-            <AdminTools />
-            {/* Add more dashboard content sections as needed */}
-          </div>
-        </main>
+      {/* Main Panels */}
+      <div className="space-y-4">
+        <AnalyticsPanel />
+        <AdminTools />
       </div>
     </div>
   );

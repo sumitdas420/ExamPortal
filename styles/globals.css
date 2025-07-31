@@ -1,3 +1,33 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Your theme tokens... */
+:root {
+  --background: 44 69% 95%;
+  --foreground: 224 71% 10%;
+  --card: 0 0% 100%;
+  --muted-foreground: 224 15% 60%;
+}
+.dark {
+  --background: 222 71% 13%;
+  --foreground: 210 40% 98%;
+  --card: 222 71% 15%;
+  --muted-foreground: 224 15% 70%;
+}
+
+/* This fixes the @apply error for custom bg/text utility classes */
+@layer utilities {
+  .bg-background {
+    background-color: hsl(var(--background)) !important;
+  }
+  .text-foreground {
+    color: hsl(var(--foreground)) !important;
+  }
+  .bg-card {
+    background-color: hsl(var(--card)) !important;
+  }
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+}

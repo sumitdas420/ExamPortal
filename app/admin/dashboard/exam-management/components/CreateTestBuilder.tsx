@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useQuery } from '@tanstack/react-query';
@@ -9,10 +9,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-// Use Select fallback for now; swap with advanced Combobox if you have one!
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
-// Zod schemas (update enums if schema ever changes)
+// Zod Schemas for form validation
 const optionSchema = z.object({
   text: z.string().min(1, "Option required"),
   image: z.string().optional(),
@@ -31,19 +31,22 @@ const questionSchema = z.object({
   questionImage: z.string().optional(),
 });
 
+const sectionSchema = z.object({
+  title: z.string().min(2),
+  sectionTime: z.number().int().min(1).max(180),
+  allowQuestionSwitch: z.boolean(),
+  questions: z.array(questionSchema).min(1),
+});
+
 const testSchema = z.object({
   title: z.string().min(3),
-  duration: z.number().int().min(1).max(360),
-  sections: z.array(
-    z.object({
-      title: z.string().min(2),
-      questions: z.array(questionSchema).min(1),
-    })
-  ),
+  allowSectionSwitch: z.boolean(),
+  sections: z.array(sectionSchema),
 });
+
 type TestForm = z.infer<typeof testSchema>;
 
-// Query hooks — adjust to your actual API
+// API fetch functions
 async function fetchBanks() {
   const res = await fetch('/api/question-banks');
   if (!res.ok) throw new Error('Failed to fetch banks');
@@ -54,54 +57,55 @@ async function fetchTags() {
   if (!res.ok) throw new Error('Failed to fetch tags');
   return res.json();
 }
-async function fetchQuestions() {
-  const res = await fetch('/api/questions');
-  if (!res.ok) throw new Error('Failed to fetch questions');
-  return res.json();
-}
 
-// Image upload utility
+// Image Upload Helper
 async function uploadImage(file: File): Promise<string | undefined> {
   const formData = new FormData();
   formData.append('image', file);
-  const res = await fetch('/api/upload', {
-    method: 'POST',
-    body: formData,
-  });
+  const res = await fetch('/api/upload', { method: 'POST', body: formData });
   const data = await res.json();
   return data.file?.filePath;
 }
 
-// ─── MAIN COMPONENT ──────────────────────────────────────────────────────
+// Main CreateTestBuilder Component
 export default function CreateTestBuilder() {
-  const { control, handleSubmit, register, reset, watch, setValue, getValues } = useForm<TestForm>({
+  const {
+    control,
+    handleSubmit,
+    register,
+    reset,
+    watch,
+    setValue,
+    getValues,
+  } = useForm<TestForm>({
     resolver: zodResolver(testSchema),
     defaultValues: {
       title: '',
-      duration: 60,
+      allowSectionSwitch: true,
       sections: [
-        {
-          title: 'Section 1',
-          questions: [],
-        },
+        { title: 'Section 1', sectionTime: 60, allowQuestionSwitch: true, questions: [] },
       ],
     },
   });
+
   const sectionsField = useFieldArray({ control, name: 'sections' });
 
-  const { data: banks, error: banksError } = useQuery(['banks'], fetchBanks);
-  const { data: tags, error: tagsError } = useQuery(['tags'], fetchTags);
-  // Optionally display existing questions table:
-  // const { data: existingQuestions, error: questionsError } = useQuery(['questions'], fetchQuestions);
+  // Data fetching using TanStack Query v5 with object syntax
+  const { data: banks, error: banksError } = useQuery({ queryKey: ['banks'], queryFn: fetchBanks });
+  const { data: tags, error: tagsError } = useQuery({ queryKey: ['tags'], queryFn: fetchTags });
 
   useEffect(() => {
     if (banksError) toast.error('Failed to load banks');
     if (tagsError) toast.error('Failed to load tags');
-    // if (questionsError) toast.error('Failed to load questions');
   }, [banksError, tagsError]);
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Compute total exam duration from sectional times
+  const sectionTimes = watch('sections')?.map(sec => Number(sec.sectionTime) || 0) || [];
+  const totalTime = useMemo(() => sectionTimes.reduce((a, b) => a + b, 0), [sectionTimes]);
+
+  // Handle form submission to create test
   async function onSubmit(data: TestForm) {
     setSubmitting(true);
     try {
@@ -114,12 +118,15 @@ export default function CreateTestBuilder() {
             body: JSON.stringify({
               ...question,
               section: section.title,
+              sectionTime: section.sectionTime,
+              allowQuestionSwitch: section.allowQuestionSwitch,
+              allowSectionSwitch: data.allowSectionSwitch,
               examTitle: data.title,
-              duration: data.duration,
+              totalTime,
+              status: 'PUBLISHED', // Mark as published when submitting
             }),
           });
-          const json = await res.json();
-          results.push(json);
+          results.push(await res.json());
         }
       }
       toast.success(`Created ${results.length} question(s)!`);
@@ -131,28 +138,58 @@ export default function CreateTestBuilder() {
     }
   }
 
+  // Save draft action
+  async function handleSaveDraft() {
+    const values = getValues();
+    setSubmitting(true);
+    try {
+      await fetch('/api/tests', { // Adjust endpoint if needed
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...values, status: 'DRAFT', totalTime }),
+      });
+      toast.success('Draft saved!');
+    } catch (e) {
+      toast.error('Failed to save draft');
+    }
+    setSubmitting(false);
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl font-bold">📘 Create New Test</CardTitle>
+        <div className="flex flex-wrap items-center gap-6 mt-2">
+          <span>
+            <span className="font-semibold">Total Exam Duration: </span>
+            <span>{totalTime} min</span>
+          </span>
+          <label className="flex items-center space-x-2">
+            <span className="font-semibold text-sm">Allow Section Switch</span>
+            <Controller
+              control={control}
+              name="allowSectionSwitch"
+              render={({ field }) => (
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  className="data-[state=checked]:bg-blue-600 bg-gray-200"
+                />
+              )}
+            />
+          </label>
+        </div>
       </CardHeader>
       <CardContent>
         <form className="space-y-8" onSubmit={handleSubmit(onSubmit)}>
           <div className="flex gap-4">
             <Input placeholder="Test Title" {...register('title')} className="w-1/2" />
-            <Input
-              type="number"
-              min={1}
-              max={360}
-              placeholder="Duration (min)"
-              {...register('duration', { valueAsNumber: true })}
-              className="w-1/4"
-            />
           </div>
-          {sectionsField.fields.map((sec, secIdx) => (
+
+          {sectionsField.fields.map((section, idx) => (
             <SectionBuilder
-              key={sec.id}
-              sectionIndex={secIdx}
+              key={section.id}
+              sectionIndex={idx}
               control={control}
               register={register}
               setValue={setValue}
@@ -161,16 +198,26 @@ export default function CreateTestBuilder() {
               tags={tags || []}
             />
           ))}
+
           <Button
             type="button"
             variant="secondary"
             onClick={() =>
-              sectionsField.append({ title: `Section ${sectionsField.fields.length + 1}`, questions: [] })
+              sectionsField.append({
+                title: `Section ${sectionsField.fields.length + 1}`,
+                sectionTime: 60,
+                allowQuestionSwitch: true,
+                questions: [],
+              })
             }
           >
             + Add Section
           </Button>
-          <div className="pt-8 flex justify-end">
+
+          <div className="pt-8 flex justify-end gap-4">
+            <Button type="button" variant="outline" onClick={handleSaveDraft} disabled={submitting}>
+              Save Draft
+            </Button>
             <Button type="submit" disabled={submitting} className="font-semibold">
               {submitting ? 'Creating...' : 'Create Test'}
             </Button>
@@ -181,9 +228,15 @@ export default function CreateTestBuilder() {
   );
 }
 
-// ─── SECTION BUILDER ───────────────────────────────────────────────
+// SectionBuilder component handles each section and its questions
 function SectionBuilder({
-  sectionIndex, control, register, setValue, watch, banks, tags
+  sectionIndex,
+  control,
+  register,
+  setValue,
+  watch,
+  banks,
+  tags,
 }: {
   sectionIndex: number;
   control: any;
@@ -193,8 +246,12 @@ function SectionBuilder({
   banks: any[];
   tags: any[];
 }) {
-  const questionsField = useFieldArray({ control, name: `sections.${sectionIndex}.questions` });
+  const questionsField = useFieldArray({
+    control,
+    name: `sections.${sectionIndex}.questions`,
+  });
 
+  // Handle question image upload uploads for question at qIdx inside this section
   async function handleQuestionImageUpload(qIdx: number, file: File) {
     const url = await uploadImage(file);
     if (url) setValue(`sections.${sectionIndex}.questions.${qIdx}.questionImage`, url);
@@ -202,140 +259,54 @@ function SectionBuilder({
 
   return (
     <div className="space-y-6 mb-6 p-4 border rounded">
-      <div className="flex items-center justify-between mb-4">
+      {/* Section header with time and question switch toggle */}
+      <div className="flex flex-wrap gap-4 mb-3 items-center">
         <Input
-          placeholder={`Section Title`}
+          placeholder="Section Title"
           {...register(`sections.${sectionIndex}.title`)}
-          className="font-bold"
+          className="font-bold !w-56"
         />
-      </div>
-      {questionsField.fields.map((q, qIdx) => {
-        const qType = watch(`sections.${sectionIndex}.questions.${qIdx}.questionType`) || 'MCQ';
-        return (
-          <Card key={q.id} className="p-4 border my-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-semibold">Q{qIdx + 1}:</span>
-              <Input
-                placeholder="Question Text"
-                {...register(`sections.${sectionIndex}.questions.${qIdx}.content`)}
-                className="w-full"
-              />
-              <Button
-                type="button"
-                size="icon"
-                variant="destructive"
-                onClick={() => questionsField.remove(qIdx)}
-                aria-label="Remove Question"
-              >
-                🗑️
-              </Button>
-            </div>
-            <div className="flex items-center gap-4 mb-2">
-              <select
-                {...register(`sections.${sectionIndex}.questions.${qIdx}.questionType`)}
-                className="p-2 border rounded"
-              >
-                <option value="MCQ">MCQ</option>
-                <option value="TRUE_FALSE">True/False</option>
-                <option value="NUMERICAL">Numerical</option>
-                <option value="DESCRIPTIVE">Descriptive</option>
-              </select>
-              {/* Image upload */}
-              <label className="flex gap-2 items-center text-xs">
-                <span>Image:</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) await handleQuestionImageUpload(qIdx, file);
-                  }}
-                  className="block"
-                />
-              </label>
-              {watch(`sections.${sectionIndex}.questions.${qIdx}.questionImage`) && (
-                <img
-                  src={watch(`sections.${sectionIndex}.questions.${qIdx}.questionImage`)}
-                  alt="preview"
-                  className="h-12 w-auto ml-2 inline-block rounded border"
-                />
-              )}
-            </div>
-            {/* OPTIONS BUILDER */}
-            {(qType === 'MCQ' || qType === 'TRUE_FALSE') && (
-              <OptionsBuilder
-                sectionIndex={sectionIndex}
-                questionIndex={qIdx}
-                control={control}
-                register={register}
-                setValue={setValue}
-                watch={watch}
-                qType={qType}
+        <Input
+          type="number"
+          min={1}
+          max={180}
+          placeholder="Section Time (min)"
+          {...register(`sections.${sectionIndex}.sectionTime`, { valueAsNumber: true })}
+          className="!w-32"
+        />
+        <label className="flex items-center space-x-2">
+          <span className="font-semibold text-sm">Allow Question Switch</span>
+          <Controller
+            control={control}
+            name={`sections.${sectionIndex}.allowQuestionSwitch`}
+            render={({ field }) => (
+              <Switch
+                checked={field.value}
+                onCheckedChange={field.onChange}
+                className="data-[state=checked]:bg-blue-600 bg-gray-200"
               />
             )}
+          />
+        </label>
+      </div>
 
-            <div className="flex gap-4 mt-3">
-              <Input
-                placeholder="Correct Answer"
-                {...register(`sections.${sectionIndex}.questions.${qIdx}.correctAnswer`)}
-                className="w-2/5"
-              />
-              <Input
-                placeholder="Subject"
-                {...register(`sections.${sectionIndex}.questions.${qIdx}.subject`)}
-                className="w-1/5"
-              />
-              <select
-                {...register(`sections.${sectionIndex}.questions.${qIdx}.difficulty`)}
-                className="p-2 border rounded w-1/5"
-              >
-                <option value="EASY">Easy</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HARD">Hard</option>
-              </select>
-            </div>
-            <Textarea
-              placeholder="Explanation (optional)"
-              {...register(`sections.${sectionIndex}.questions.${qIdx}.explanation`)}
-              className="mt-2"
-            />
-            {/* TAGS MULTI-SELECT */}
-            <label className="block mt-2 text-xs font-medium">Tags
-              <select
-                multiple
-                value={watch(`sections.${sectionIndex}.questions.${qIdx}.tags`) || []}
-                onChange={e =>
-                  setValue(
-                    `sections.${sectionIndex}.questions.${qIdx}.tags`,
-                    Array.from(e.target.selectedOptions).map(option => option.value)
-                  )
-                }
-                className="w-full p-2 border rounded"
-              >
-                {tags && Array.isArray(tags) && tags.map((tag: any) => (
-                  <option key={tag.id} value={tag.name}>{tag.name}</option>
-                ))}
-              </select>
-            </label>
+      {/* Questions list */}
+      {questionsField.fields.map((question, qIdx) => (
+        <QuestionBuilder
+          key={question.id}
+          sectionIndex={sectionIndex}
+          questionIndex={qIdx}
+          control={control}
+          register={register}
+          setValue={setValue}
+          watch={watch}
+          banks={banks}
+          tags={tags}
+          removeQuestion={() => questionsField.remove(qIdx)}
+          handleQuestionImageUpload={handleQuestionImageUpload}
+        />
+      ))}
 
-            {/* BANK SINGLE-SELECT */}
-            <label className="block mt-2 text-xs font-medium">Bank
-              <select
-                value={watch(`sections.${sectionIndex}.questions.${qIdx}.bank`) || ""}
-                onChange={e =>
-                  setValue(`sections.${sectionIndex}.questions.${qIdx}.bank`, e.target.value)
-                }
-                className="w-full p-2 border rounded"
-              >
-                <option value="">Select Bank</option>
-                {banks && Array.isArray(banks) && banks.map((bank: any) => (
-                  <option key={bank.id} value={bank.name}>{bank.name}</option>
-                ))}
-              </select>
-            </label>
-          </Card>
-        );
-      })}
       <Button
         type="button"
         onClick={() =>
@@ -359,9 +330,193 @@ function SectionBuilder({
   );
 }
 
-// ─── OPTIONS BUILDER ─────────────────────────────────────────────────
+// QuestionBuilder handles each question form inside a section
+function QuestionBuilder({
+  sectionIndex,
+  questionIndex,
+  control,
+  register,
+  setValue,
+  watch,
+  banks,
+  tags,
+  removeQuestion,
+  handleQuestionImageUpload,
+}: {
+  sectionIndex: number;
+  questionIndex: number;
+  control: any;
+  register: any;
+  setValue: any;
+  watch: any;
+  banks: any[];
+  tags: any[];
+  removeQuestion: () => void;
+  handleQuestionImageUpload: (qIdx: number, file: File) => Promise<void>;
+}) {
+  const optionsField = useFieldArray({
+    control,
+    name: `sections.${sectionIndex}.questions.${questionIndex}.options`,
+  });
+
+  const base = `sections.${sectionIndex}.questions.${questionIndex}`;
+  const qType = watch(`${base}.questionType`) || 'MCQ';
+
+  // Auto fill TRUE_FALSE options
+  useEffect(() => {
+    if (qType === 'TRUE_FALSE' && optionsField.fields.length < 2) {
+      setValue(
+        `${base}.options`,
+        [
+          { text: 'True', image: '' },
+          { text: 'False', image: '' },
+        ],
+        { shouldValidate: false, shouldDirty: false }
+      );
+    }
+  }, [qType, optionsField.fields.length, setValue, base]);
+
+  return (
+    <Card className="p-4 border my-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="font-semibold">Q{questionIndex + 1}:</span>
+        <Input
+          placeholder="Question Text"
+          {...register(`${base}.content`)}
+          className="w-full"
+        />
+        <Button
+          type="button"
+          size="icon"
+          variant="destructive"
+          onClick={removeQuestion}
+          aria-label="Remove Question"
+        >
+          🗑️
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-4 mb-2">
+        <select
+          {...register(`${base}.questionType`)}
+          className="p-2 border rounded"
+        >
+          <option value="MCQ">MCQ</option>
+          <option value="TRUE_FALSE">True/False</option>
+          <option value="NUMERICAL">Numerical</option>
+          <option value="DESCRIPTIVE">Descriptive</option>
+        </select>
+
+        <label className="flex gap-2 items-center text-xs">
+          <span>Image:</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) await handleQuestionImageUpload(questionIndex, file);
+            }}
+            className="block"
+          />
+        </label>
+
+        {watch(`${base}.questionImage`) && (
+          <img
+            src={watch(`${base}.questionImage`)}
+            alt="preview"
+            className="h-12 w-auto ml-2 inline-block rounded border"
+          />
+        )}
+      </div>
+
+      {(qType === 'MCQ' || qType === 'TRUE_FALSE') && (
+        <OptionsBuilder
+          sectionIndex={sectionIndex}
+          questionIndex={questionIndex}
+          control={control}
+          register={register}
+          setValue={setValue}
+          watch={watch}
+          qType={qType}
+        />
+      )}
+
+      <div className="flex gap-4 mt-3">
+        <Input
+          placeholder="Correct Answer"
+          {...register(`${base}.correctAnswer`)}
+          className="w-2/5"
+        />
+        <Input
+          placeholder="Subject"
+          {...register(`${base}.subject`)}
+          className="w-1/5"
+        />
+        <select
+          {...register(`${base}.difficulty`)}
+          className="p-2 border rounded w-1/5"
+        >
+          <option value="EASY">Easy</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HARD">Hard</option>
+        </select>
+      </div>
+
+      <Textarea
+        placeholder="Explanation (optional)"
+        {...register(`${base}.explanation`)}
+        className="mt-2"
+      />
+
+      {/* Tags Multi-select */}
+      <label className="block mt-2 text-xs font-medium">
+        Tags
+        <select
+          multiple
+          value={watch(`${base}.tags`) || []}
+          onChange={e =>
+            setValue(
+              `${base}.tags`,
+              Array.from(e.target.selectedOptions).map(option => option.value)
+            )
+          }
+          className="w-full p-2 border rounded"
+        >
+          {(tags || []).map((tag: any) => (
+            <option key={tag.id} value={tag.name}>{tag.name}</option>
+          ))}
+        </select>
+      </label>
+
+      {/* Bank Single select */}
+      <label className="block mt-2 text-xs font-medium">
+        Bank
+        <select
+          value={watch(`${base}.bank`) || ""}
+          onChange={e =>
+            setValue(`${base}.bank`, e.target.value)
+          }
+          className="w-full p-2 border rounded"
+        >
+          <option value="">Select Bank</option>
+          {(banks || []).map((bank: any) => (
+            <option key={bank.id} value={bank.name}>{bank.name}</option>
+          ))}
+        </select>
+      </label>
+    </Card>
+  );
+}
+
+// Options Builder handles answer choices for MCQ/TrueFalse
 function OptionsBuilder({
-  sectionIndex, questionIndex, control, register, setValue, watch, qType
+  sectionIndex,
+  questionIndex,
+  control,
+  register,
+  setValue,
+  watch,
+  qType,
 }: {
   sectionIndex: number;
   questionIndex: number;
@@ -381,7 +536,6 @@ function OptionsBuilder({
     if (url) setValue(`sections.${sectionIndex}.questions.${questionIndex}.options.${idx}.image`, url);
   }
 
-  // Auto-fill for TRUE_FALSE
   useEffect(() => {
     if (qType === 'TRUE_FALSE' && optionsField.fields.length < 2) {
       setValue(
@@ -390,7 +544,7 @@ function OptionsBuilder({
           { text: 'True', image: '' },
           { text: 'False', image: '' },
         ],
-        { shouldValidate: false }
+        { shouldValidate: false, shouldDirty: false }
       );
     }
   }, [qType, optionsField.fields.length, sectionIndex, questionIndex, setValue]);
